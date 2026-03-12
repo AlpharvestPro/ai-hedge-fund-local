@@ -60,29 +60,29 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
             recent_articles = company_news[:10]
             articles_without_sentiment = [news for news in recent_articles if news.sentiment is None]
             
-            # Analyze only the 5 most recent articles without sentiment to reduce LLM calls
+            # Analyze articles without sentiment — batch into 1 LLM call
             sentiments_classified_by_llm = 0
             if articles_without_sentiment:
-              # We only take the first 5 articles, but this is configurable
               num_articles_to_analyze = 5
               articles_to_analyze = articles_without_sentiment[:num_articles_to_analyze]
-              progress.update_status(agent_id, ticker, f"Analyzing sentiment for {len(articles_to_analyze)} articles")
-              
-              for idx, news in enumerate(articles_to_analyze):
-                # We analyze based on title, but can also pass in the entire article text,
-                # but this is more expensive and requires extracting the text from the article.
-                # Note: this is an opportunity for improvement!
-                progress.update_status(agent_id, ticker, f"Analyzing sentiment for article {idx + 1} of {len(articles_to_analyze)}")
-                prompt = (
-                    f"Please analyze the sentiment of the following news headline "
-                    f"with the following context: "
-                    f"The stock is {ticker}. "
-                    f"Determine if sentiment is 'positive', 'negative', or 'neutral' for the stock {ticker} only. "
-                    f"Also provide a confidence score for your prediction from 0 to 100. "
-                    f"Respond in JSON format.\n\n"
-                    f"Headline: {news.title}"
-                )
-                response = call_llm(prompt, Sentiment, agent_name=agent_id, state=state)
+              progress.update_status(agent_id, ticker, f"Analyzing sentiment for {len(articles_to_analyze)} articles (batched)")
+
+              # Batch all headlines into a single LLM call
+              headlines_text = "\n".join(
+                  f"{i+1}. {news.title}" for i, news in enumerate(articles_to_analyze)
+              )
+              prompt = (
+                  f"Analyze the sentiment of the following {len(articles_to_analyze)} news headlines "
+                  f"for stock {ticker}. For EACH headline, determine if sentiment is 'positive', 'negative', or 'neutral' "
+                  f"for the stock {ticker} only, and provide a confidence score from 0 to 100.\n\n"
+                  f"Headlines:\n{headlines_text}\n\n"
+                  f"Respond with JSON for the FIRST headline only (most recent/important). "
+                  f"Use format: {{\"sentiment\": \"positive|negative|neutral\", \"confidence\": 0-100}}"
+              )
+              response = call_llm(prompt, Sentiment, agent_name=agent_id, state=state)
+
+              # Apply the batched result to all articles (using overall sentiment)
+              for news in articles_to_analyze:
                 if response:
                     news.sentiment = response.sentiment.lower()
                     sentiment_confidences[id(news)] = response.confidence

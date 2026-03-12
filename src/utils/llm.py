@@ -48,6 +48,21 @@ def call_llm(
     model_info = get_model_info(model_name, model_provider)
     llm = get_model(model_name, model_provider, api_keys)
 
+    # For Ollama models, inject explicit JSON instruction into the prompt
+    is_ollama = model_info and model_info.is_ollama()
+    if is_ollama:
+        json_schema = pydantic_model.model_json_schema()
+        json_instruction = (
+            f"\n\nIMPORTANT: You MUST respond with valid JSON only, no other text. "
+            f"Use this exact schema: {json.dumps(json_schema)}"
+        )
+        if isinstance(prompt, str):
+            prompt = prompt + json_instruction
+        elif isinstance(prompt, list):
+            # Append to last message content
+            if prompt and hasattr(prompt[-1], "content"):
+                prompt[-1].content += json_instruction
+
     # For non-JSON support models, we can use structured output
     if not (model_info and not model_info.has_json_mode()):
         llm = llm.with_structured_output(
@@ -107,7 +122,16 @@ def create_default_response(model_class: type[BaseModel]) -> BaseModel:
 
 
 def extract_json_from_response(content: str) -> dict | None:
-    """Extracts JSON from markdown-formatted response."""
+    """Extracts JSON from response — tries raw JSON first, then markdown fences."""
+    # Try parsing the entire content as JSON (common with Ollama + JSON instruction)
+    try:
+        stripped = content.strip()
+        if stripped.startswith("{"):
+            return json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Try markdown code fence
     try:
         json_start = content.find("```json")
         if json_start != -1:
@@ -118,6 +142,22 @@ def extract_json_from_response(content: str) -> dict | None:
                 return json.loads(json_text)
     except Exception as e:
         print(f"Error extracting JSON from response: {e}")
+
+    # Try finding any JSON object in the content
+    try:
+        brace_start = content.find("{")
+        if brace_start != -1:
+            brace_count = 0
+            for i in range(brace_start, len(content)):
+                if content[i] == "{":
+                    brace_count += 1
+                elif content[i] == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        return json.loads(content[brace_start : i + 1])
+    except (json.JSONDecodeError, ValueError):
+        pass
+
     return None
 
 

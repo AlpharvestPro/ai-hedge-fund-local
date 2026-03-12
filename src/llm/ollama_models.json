@@ -53,5 +53,10 @@
     "display_name": "Llama 3.3 (70B)",
     "model_name": "llama3.3:70b-instruct-q4_0",
     "provider": "Meta"
+  },
+  {
+    "display_name": "Qwen 3.5 9B (Alibaba)",
+    "model_name": "qwen3.5:9b",
+    "provider": "Alibaba"
   }
 ] 

@@ -63,5 +63,11 @@ outputs/
 *.sqlite
 *.sqlite3
 
+# Data cache and output (at repo root, not src/data/)
+/data/
+/output/
+/logs/
+candidates.json
+
 # Alembic (keep migration files, but ignore generated/cache files)
 app/backend/alembic/versions/__pycache__/

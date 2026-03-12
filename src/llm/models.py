@@ -52,9 +52,9 @@ class LLMModel(BaseModel):
         """Check if the model supports JSON mode"""
         if self.is_deepseek() or self.is_gemini():
             return False
-        # Only certain Ollama models support JSON mode
+        # Ollama models that support JSON mode via format="json"
         if self.is_ollama():
-            return "llama3" in self.model_name or "neural-chat" in self.model_name
+            return any(k in self.model_name for k in ("llama3", "neural-chat", "qwen", "gemma", "mistral"))
         # OpenRouter models generally support JSON mode
         if self.provider == ModelProvider.OPENROUTER:
             return True
