@@ -60,8 +60,30 @@ def get_prices(ticker: str, start_date: str, end_date: str) -> list[Price]:
         return []
 
 
+def _yf_safe_float(val) -> float | None:
+    """Convert yfinance value to float, handling NaN."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if f != f else f  # NaN check
+    except (ValueError, TypeError):
+        return None
+
+
+def _pct_growth(current, previous) -> float | None:
+    """Calculate percentage growth between two values."""
+    if current is None or previous is None or previous == 0:
+        return None
+    return (current - previous) / abs(previous)
+
+
 def get_financial_metrics(ticker: str, end_date: str, period: str = "ttm", limit: int = 10) -> list[FinancialMetrics]:
-    """Fetch financial metrics from yfinance .info and .financials."""
+    """Fetch financial metrics from yfinance .info + .financials/.cashflow.
+
+    Returns multiple periods (up to `limit`) with computed growth fields,
+    so agents that need historical series (e.g. growth_agent) get enough data.
+    """
     cached = cache_get(PROVIDER, "get_financial_metrics", ticker, end_date=end_date, period=period, limit=limit)
     if cached is not None:
         return [FinancialMetrics(**m) for m in cached]
@@ -70,55 +92,149 @@ def get_financial_metrics(ticker: str, end_date: str, period: str = "ttm", limit
         t = yf.Ticker(ticker)
         info = t.info or {}
 
-        metrics = FinancialMetrics(
-            ticker=ticker,
-            report_period=end_date,
-            period=period,
-            currency=info.get("currency", "USD"),
-            market_cap=info.get("marketCap"),
-            enterprise_value=info.get("enterpriseValue"),
-            price_to_earnings_ratio=info.get("trailingPE"),
-            price_to_book_ratio=info.get("priceToBook"),
-            price_to_sales_ratio=info.get("priceToSalesTrailing12Months"),
-            enterprise_value_to_ebitda_ratio=info.get("enterpriseToEbitda"),
-            enterprise_value_to_revenue_ratio=info.get("enterpriseToRevenue"),
-            free_cash_flow_yield=_safe_div(info.get("freeCashflow"), info.get("marketCap")),
-            peg_ratio=info.get("pegRatio"),
-            gross_margin=info.get("grossMargins"),
-            operating_margin=info.get("operatingMargins"),
-            net_margin=info.get("profitMargins"),
-            return_on_equity=info.get("returnOnEquity"),
-            return_on_assets=info.get("returnOnAssets"),
-            return_on_invested_capital=None,
-            asset_turnover=None,
-            inventory_turnover=None,
-            receivables_turnover=None,
-            days_sales_outstanding=None,
-            operating_cycle=None,
-            working_capital_turnover=None,
-            current_ratio=info.get("currentRatio"),
-            quick_ratio=info.get("quickRatio"),
-            cash_ratio=None,
-            operating_cash_flow_ratio=None,
-            debt_to_equity=info.get("debtToEquity"),
-            debt_to_assets=None,
-            interest_coverage=None,
-            revenue_growth=info.get("revenueGrowth"),
-            earnings_growth=info.get("earningsGrowth"),
-            book_value_growth=None,
-            earnings_per_share_growth=None,
-            free_cash_flow_growth=None,
-            operating_income_growth=None,
-            ebitda_growth=None,
-            payout_ratio=info.get("payoutRatio"),
-            earnings_per_share=info.get("trailingEps"),
-            book_value_per_share=info.get("bookValue"),
-            free_cash_flow_per_share=None,
-        )
+        # Fetch annual financials + cashflow for multi-period data
+        financials = t.financials  # annual income statement
+        cashflow = t.cashflow      # annual cashflow
 
-        result = [metrics]
-        cache_set(PROVIDER, "get_financial_metrics", ticker, [m.model_dump() for m in result], TTL_7D, end_date=end_date, period=period, limit=limit)
-        return result
+        # Build per-period metrics from historical data
+        results = []
+        if financials is not None and not financials.empty:
+            dates = sorted(financials.columns, reverse=True)
+            dates = [d for d in dates if d.strftime("%Y-%m-%d") <= end_date][:limit]
+
+            for i, date_col in enumerate(dates):
+                date_str = date_col.strftime("%Y-%m-%d")
+
+                # Extract values for this period
+                revenue = _yf_safe_float(financials.loc["Total Revenue", date_col]) if "Total Revenue" in financials.index else None
+                net_income = _yf_safe_float(financials.loc["Net Income", date_col]) if "Net Income" in financials.index else None
+                gross_profit = _yf_safe_float(financials.loc["Gross Profit", date_col]) if "Gross Profit" in financials.index else None
+                operating_income = _yf_safe_float(financials.loc["Operating Income", date_col]) if "Operating Income" in financials.index else None
+                diluted_eps = _yf_safe_float(financials.loc["Diluted EPS", date_col]) if "Diluted EPS" in financials.index else None
+                basic_eps = _yf_safe_float(financials.loc["Basic EPS", date_col]) if "Basic EPS" in financials.index else None
+                eps = diluted_eps or basic_eps
+
+                fcf = None
+                if cashflow is not None and not cashflow.empty and date_col in cashflow.columns:
+                    fcf = _yf_safe_float(cashflow.loc["Free Cash Flow", date_col]) if "Free Cash Flow" in cashflow.index else None
+
+                # Calculate growth vs previous period
+                prev_col = dates[i + 1] if i + 1 < len(dates) else None
+                rev_growth = None
+                eps_growth = None
+                fcf_growth = None
+                oi_growth = None
+                earnings_growth = None
+
+                if prev_col is not None:
+                    prev_revenue = _yf_safe_float(financials.loc["Total Revenue", prev_col]) if "Total Revenue" in financials.index else None
+                    rev_growth = _pct_growth(revenue, prev_revenue)
+                    prev_ni = _yf_safe_float(financials.loc["Net Income", prev_col]) if "Net Income" in financials.index else None
+                    earnings_growth = _pct_growth(net_income, prev_ni)
+                    prev_eps = _yf_safe_float(financials.loc["Diluted EPS", prev_col]) if "Diluted EPS" in financials.index else _yf_safe_float(financials.loc["Basic EPS", prev_col]) if "Basic EPS" in financials.index else None
+                    eps_growth = _pct_growth(eps, prev_eps)
+                    prev_oi = _yf_safe_float(financials.loc["Operating Income", prev_col]) if "Operating Income" in financials.index else None
+                    oi_growth = _pct_growth(operating_income, prev_oi)
+                    if cashflow is not None and not cashflow.empty and prev_col in cashflow.columns:
+                        prev_fcf = _yf_safe_float(cashflow.loc["Free Cash Flow", prev_col]) if "Free Cash Flow" in cashflow.index else None
+                        fcf_growth = _pct_growth(fcf, prev_fcf)
+
+                # Margins
+                gross_margin = _safe_div(gross_profit, revenue)
+                operating_margin = _safe_div(operating_income, revenue)
+                net_margin = _safe_div(net_income, revenue)
+
+                # For the most recent period, enrich with .info data (live ratios)
+                is_latest = (i == 0)
+
+                m = FinancialMetrics(
+                    ticker=ticker,
+                    report_period=date_str,
+                    period=period,
+                    currency=info.get("currency", "USD"),
+                    market_cap=info.get("marketCap") if is_latest else None,
+                    enterprise_value=info.get("enterpriseValue") if is_latest else None,
+                    price_to_earnings_ratio=info.get("trailingPE") if is_latest else None,
+                    price_to_book_ratio=info.get("priceToBook") if is_latest else None,
+                    price_to_sales_ratio=info.get("priceToSalesTrailing12Months") if is_latest else None,
+                    enterprise_value_to_ebitda_ratio=info.get("enterpriseToEbitda") if is_latest else None,
+                    enterprise_value_to_revenue_ratio=info.get("enterpriseToRevenue") if is_latest else None,
+                    free_cash_flow_yield=_safe_div(info.get("freeCashflow"), info.get("marketCap")) if is_latest else None,
+                    peg_ratio=info.get("pegRatio") if is_latest else None,
+                    gross_margin=gross_margin if gross_margin is not None else (info.get("grossMargins") if is_latest else None),
+                    operating_margin=operating_margin if operating_margin is not None else (info.get("operatingMargins") if is_latest else None),
+                    net_margin=net_margin if net_margin is not None else (info.get("profitMargins") if is_latest else None),
+                    return_on_equity=info.get("returnOnEquity") if is_latest else None,
+                    return_on_assets=info.get("returnOnAssets") if is_latest else None,
+                    return_on_invested_capital=None,
+                    asset_turnover=None,
+                    inventory_turnover=None,
+                    receivables_turnover=None,
+                    days_sales_outstanding=None,
+                    operating_cycle=None,
+                    working_capital_turnover=None,
+                    current_ratio=info.get("currentRatio") if is_latest else None,
+                    quick_ratio=info.get("quickRatio") if is_latest else None,
+                    cash_ratio=None,
+                    operating_cash_flow_ratio=None,
+                    debt_to_equity=info.get("debtToEquity") if is_latest else None,
+                    debt_to_assets=None,
+                    interest_coverage=None,
+                    revenue_growth=rev_growth if rev_growth is not None else (info.get("revenueGrowth") if is_latest else None),
+                    earnings_growth=earnings_growth if earnings_growth is not None else (info.get("earningsGrowth") if is_latest else None),
+                    book_value_growth=None,
+                    earnings_per_share_growth=eps_growth,
+                    free_cash_flow_growth=fcf_growth,
+                    operating_income_growth=oi_growth,
+                    ebitda_growth=None,
+                    payout_ratio=info.get("payoutRatio") if is_latest else None,
+                    earnings_per_share=eps,
+                    book_value_per_share=info.get("bookValue") if is_latest else None,
+                    free_cash_flow_per_share=None,
+                )
+                results.append(m)
+
+        # Fallback: if no financials available, return single metric from .info
+        if not results:
+            results = [FinancialMetrics(
+                ticker=ticker,
+                report_period=end_date,
+                period=period,
+                currency=info.get("currency", "USD"),
+                market_cap=info.get("marketCap"),
+                enterprise_value=info.get("enterpriseValue"),
+                price_to_earnings_ratio=info.get("trailingPE"),
+                price_to_book_ratio=info.get("priceToBook"),
+                price_to_sales_ratio=info.get("priceToSalesTrailing12Months"),
+                enterprise_value_to_ebitda_ratio=info.get("enterpriseToEbitda"),
+                enterprise_value_to_revenue_ratio=info.get("enterpriseToRevenue"),
+                free_cash_flow_yield=_safe_div(info.get("freeCashflow"), info.get("marketCap")),
+                peg_ratio=info.get("pegRatio"),
+                gross_margin=info.get("grossMargins"),
+                operating_margin=info.get("operatingMargins"),
+                net_margin=info.get("profitMargins"),
+                return_on_equity=info.get("returnOnEquity"),
+                return_on_assets=info.get("returnOnAssets"),
+                return_on_invested_capital=None, asset_turnover=None, inventory_turnover=None,
+                receivables_turnover=None, days_sales_outstanding=None, operating_cycle=None,
+                working_capital_turnover=None,
+                current_ratio=info.get("currentRatio"),
+                quick_ratio=info.get("quickRatio"),
+                cash_ratio=None, operating_cash_flow_ratio=None,
+                debt_to_equity=info.get("debtToEquity"),
+                debt_to_assets=None, interest_coverage=None,
+                revenue_growth=info.get("revenueGrowth"),
+                earnings_growth=info.get("earningsGrowth"),
+                book_value_growth=None, earnings_per_share_growth=None,
+                free_cash_flow_growth=None, operating_income_growth=None, ebitda_growth=None,
+                payout_ratio=info.get("payoutRatio"),
+                earnings_per_share=info.get("trailingEps"),
+                book_value_per_share=info.get("bookValue"),
+                free_cash_flow_per_share=None,
+            )]
+
+        cache_set(PROVIDER, "get_financial_metrics", ticker, [m.model_dump() for m in results], TTL_7D, end_date=end_date, period=period, limit=limit)
+        return results
     except Exception as e:
         print(f"[yfinance] Error fetching metrics for {ticker}: {e}")
         return []

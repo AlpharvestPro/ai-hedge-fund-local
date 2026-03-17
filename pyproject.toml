@@ -10,7 +10,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 langchain = "^0.3.7"
 langchain-anthropic = "0.3.5"
 langchain-groq = "0.2.3"
@@ -50,7 +50,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 420
-target-version = ['py311']
+target-version = ['py310']
 include = '\.pyi?$'
 
 [tool.isort]
