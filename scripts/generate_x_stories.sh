@@ -3,6 +3,8 @@
 # Crontab: 30 8 * * 2-6 (CST 08:30 Tue-Sat)
 set -euo pipefail
 
+export PATH="/home/jetson/.local/bin:$PATH"
+
 DATE=$(date +%Y-%m-%d)
 PI2="alpharvestpro@100.64.141.38"
 LOG="$HOME/log/x_stories.log"

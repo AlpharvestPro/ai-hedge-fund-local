@@ -79,7 +79,11 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
                   f"Respond with JSON for the FIRST headline only (most recent/important). "
                   f"Use format: {{\"sentiment\": \"positive|negative|neutral\", \"confidence\": 0-100}}"
               )
-              response = call_llm(prompt, Sentiment, agent_name=agent_id, state=state)
+              response = call_llm(
+                  prompt, Sentiment, agent_name=agent_id, state=state,
+                  max_retries=1,
+                  default_factory=lambda: Sentiment(sentiment="neutral", confidence=0),
+              )
 
               # Apply the batched result to all articles (using overall sentiment)
               for news in articles_to_analyze:

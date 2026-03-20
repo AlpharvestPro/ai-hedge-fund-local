@@ -99,14 +99,19 @@ def print_trading_output(result: dict) -> None:
         table_data = sort_agent_signals(table_data)
 
         print(f"\n{Fore.WHITE}{Style.BRIGHT}AGENT ANALYSIS:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
-        print(
-            tabulate(
-                table_data,
-                headers=[f"{Fore.WHITE}Agent", "Signal", "Confidence", "Reasoning"],
-                tablefmt="grid",
-                colalign=("left", "center", "right", "left"),
+        if table_data:
+            ncols = len(table_data[0])
+            aligns = ("left", "center", "right", "left")[:ncols]
+            print(
+                tabulate(
+                    table_data,
+                    headers=[f"{Fore.WHITE}Agent", "Signal", "Confidence", "Reasoning"][:ncols],
+                    tablefmt="grid",
+                    colalign=aligns,
+                )
             )
-        )
+        else:
+            print(f"  No analyst signals for {ticker}")
 
         # Print Trading Decision Table
         action = decision.get("action", "").upper()

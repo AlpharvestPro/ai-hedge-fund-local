@@ -176,4 +176,12 @@ if __name__ == "__main__":
         model_name=inputs.model_name,
         model_provider=inputs.model_provider,
     )
+    # Save pipeline JSON for summary generator (before display, which can crash)
+    from pathlib import Path
+    out_dir = Path("output")
+    out_dir.mkdir(exist_ok=True)
+    pipeline_path = out_dir / f"pipeline_{inputs.end_date}.json"
+    pipeline_path.write_text(json.dumps(result, indent=2, default=str))
+    print(f"Pipeline JSON saved to {pipeline_path}")
+
     print_trading_output(result)

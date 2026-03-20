@@ -1,12 +1,13 @@
 # AI Hedge Fund — Jetson Orin NX
 
-Multi-agent AI stock analysis pipeline running locally on Jetson with Qwen 3.5:9B via Ollama.
+Multi-agent AI stock analysis pipeline running locally on Jetson with Qwen 2.5:7B via Ollama.
 
 ## Tech Stack
 - Python 3.10+, Poetry, LangGraph/LangChain
-- LLM: Qwen 3.5:9B via Ollama (localhost:11434), ~10.4 tok/s
+- LLM: Qwen 2.5:7B via Ollama (localhost:11434) — NOT 3.5:9B (produces nonsense JSON)
 - Data: yfinance (primary), SEC EDGAR, ~~FMP~~ (key expired 2026-03-15)
 - Database: SQLite `~/data/us_rs.db` (synced from Pi1 `rs_rankings.db`)
+- yfinance cookie cache at `~/.cache/py-yfinance/cookies.db` — cleared before each run to avoid 401
 
 ## Commands
 ```bash
@@ -77,7 +78,10 @@ Jetson → SCP → Pi2:~/alpharvestpro-vip/docs/us/YYYY-MM/ai_hedge_fund_DATE.ht
 - FMP API key is dead — all data comes from yfinance; `api.py` silently falls back
 - yfinance `get_financial_metrics()` returns 4-5 annual periods with computed growth; growth agent needs >= 4
 - Use Tailscale IPs directly (100.x.x.x), NOT hostnames — DNS unreliable on Jetson
-- Ollama serves one request at a time — 17 analysts run sequentially per ticker (~10 min/ticker)
-- Pipeline output JSON at `output/pipeline_YYYY-MM-DD.json`; reports at `output/summary_YYYY-MM-DD.{html,txt}`
+- Ollama serves one request at a time — 7 analysts run sequentially per ticker (~5 min/ticker)
+- Pipeline saves JSON at `output/pipeline_MDATE.json` BEFORE display (crash-safe); reports at `output/summary_MDATE.{html,txt}`
+- `daily_run.sh` uses `TZ=America/New_York` for US market date (MDATE) — at CST 07:30, NY is previous day
+- News sentiment: max_retries=1, defaults to neutral on parse failure (no stalling on bad LLM output)
+- Never show LLM model name in user-facing reports (removed from summary headers)
 - X stories output at `output/x_stories_YYYY-MM-DD.json`; pushed to Pi2 `data/x-stories/`
 - X stories cron: `30 8 * * 2-6` (after DB sync at 07:00, before first X post slot)

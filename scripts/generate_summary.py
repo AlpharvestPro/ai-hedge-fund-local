@@ -44,6 +44,30 @@ AGENT_SHORT = {
     "aswath_damodaran_agent": "Damod",
 }
 
+# Agents excluded from display (position-sizing only, no signal)
+EXCLUDE_FROM_DISPLAY = {"risk_management_agent"}
+
+
+def _summarize_reasoning(reasoning) -> str:
+    """Convert reasoning (str or dict) to readable text."""
+    if isinstance(reasoning, str):
+        return reasoning
+    if isinstance(reasoning, dict):
+        parts = []
+        for k, v in reasoning.items():
+            label = k.replace("_", " ").title()
+            if isinstance(v, str):
+                parts.append(f"{label}: {v}")
+            elif isinstance(v, (int, float)):
+                parts.append(f"{label}: {v}")
+            elif isinstance(v, dict):
+                sub = "; ".join(f"{sk}: {sv}" for sk, sv in v.items())
+                parts.append(f"{label}: {sub}")
+            elif isinstance(v, list):
+                parts.append(f"{label}: {', '.join(str(i) for i in v)}")
+        return " | ".join(parts)
+    return str(reasoning) if reasoning else ""
+
 
 def _load_stock_info(tickers: list[str], market: str) -> dict:
     """Load company name, sector, industry group, RS rating from DB."""
@@ -96,7 +120,9 @@ def _signal_score(signal: str, confidence: float) -> float:
 def _overall_score(analyst_signals: dict, ticker: str) -> float:
     """Average score across all analysts for a ticker (-100 to +100)."""
     scores = []
-    for agent_data in analyst_signals.values():
+    for agent_id, agent_data in analyst_signals.items():
+        if agent_id in EXCLUDE_FROM_DISPLAY:
+            continue
         if not isinstance(agent_data, dict) or ticker not in agent_data:
             continue
         ts = agent_data[ticker]
@@ -108,7 +134,9 @@ def _overall_score(analyst_signals: dict, ticker: str) -> float:
 def _signal_counts(analyst_signals: dict, ticker: str) -> tuple[int, int, int]:
     """Count bullish/bearish/neutral signals for a ticker."""
     bull = bear = neut = 0
-    for agent_data in analyst_signals.values():
+    for agent_id, agent_data in analyst_signals.items():
+        if agent_id in EXCLUDE_FROM_DISPLAY:
+            continue
         if not isinstance(agent_data, dict) or ticker not in agent_data:
             continue
         ts = agent_data[ticker]
@@ -123,24 +151,24 @@ def _signal_counts(analyst_signals: dict, ticker: str) -> tuple[int, int, int]:
     return bull, bear, neut
 
 
-def _signal_char(signal: str, confidence: float) -> str:
-    """Short display: +78 for bullish 78%, -90 for bearish 90%, . for neutral."""
+def _signal_char(signal, confidence: float) -> str:
+    """Short display: +78 for bullish 78%, -90 for bearish 90%, . for no data."""
+    if signal is None:
+        return "."
     if signal in ("bullish", "positive"):
         return f"+{confidence:.0f}"
     elif signal in ("bearish", "negative"):
         return f"-{confidence:.0f}"
-    if confidence == 0:
-        return "."
     return f"~{confidence:.0f}"
 
 
-def generate_text_summary(analyst_signals: dict, decisions: dict, date: str,
-                          market: str, stock_info: dict, model: str = "Qwen 3.5:9B") -> str:
+def generate_text_summary(analyst_signals: dict, date: str,
+                          market: str, stock_info: dict) -> str:
     """Generate a text summary report with matrix table + per-ticker details."""
     lines = []
     lines.append("=" * 80)
     lines.append(f"  AI HEDGE FUND — Selection Summary ({date})")
-    lines.append(f"  Model: {model} | Market: {market.upper()}")
+    lines.append(f"  Market: {market.upper()}")
     lines.append("=" * 80)
     lines.append("")
 
@@ -153,25 +181,20 @@ def generate_text_summary(analyst_signals: dict, decisions: dict, date: str,
         if isinstance(agent_signals, dict):
             all_tickers.update(agent_signals.keys())
 
-    dec_map = {}
-    if decisions:
-        for dec in decisions if isinstance(decisions, list) else [decisions]:
-            if isinstance(dec, dict) and "ticker" in dec:
-                dec_map[dec["ticker"]] = dec
-
-    # Get ordered agent list
-    agent_ids = sorted(analyst_signals.keys())
+    # Get ordered agent list (excluding non-signal agents)
+    agent_ids = sorted(a for a in analyst_signals.keys() if a not in EXCLUDE_FROM_DISPLAY)
     agent_shorts = [AGENT_SHORT.get(a, a.replace("_agent", "")[:6].title()) for a in agent_ids]
 
-    # Sort tickers by overall score descending
-    sorted_tickers = sorted(all_tickers, key=lambda t: _overall_score(analyst_signals, t), reverse=True)
+    # Pre-compute scores (used in sorting, matrix rows, and detail cards)
+    ticker_scores = {t: _overall_score(analyst_signals, t) for t in all_tickers}
+    sorted_tickers = sorted(all_tickers, key=lambda t: ticker_scores[t], reverse=True)
 
     # ── Summary Matrix Table ──
     lines.append("  SUMMARY MATRIX  (+ = bullish, - = bearish, ~ = neutral, . = no data)")
     lines.append("")
 
     # Header
-    hdr = f"  {'Ticker':<7} {'Industry Group':<24} {'RS':>3} {'Dec':>4} {'Scr':>5}"
+    hdr = f"  {'Ticker':<7} {'Industry Group':<24} {'RS':>3} {'Scr':>5}"
     for short in agent_shorts:
         hdr += f" {short:>6}"
     lines.append(hdr)
@@ -179,11 +202,9 @@ def generate_text_summary(analyst_signals: dict, decisions: dict, date: str,
 
     for ticker in sorted_tickers:
         info = stock_info.get(ticker, {})
-        dec = dec_map.get(ticker, {})
-        action = dec.get("action", "HOLD").upper()[:4]
-        score = _overall_score(analyst_signals, ticker)
+        score = ticker_scores[ticker]
 
-        row = f"  {ticker:<7} {info.get('industry_group', '')[:23]:<24} {info.get('rs_rating', 0):3.0f} {action:>4} {score:+5.0f}"
+        row = f"  {ticker:<7} {info.get('industry_group', '')[:23]:<24} {info.get('rs_rating', 0):3.0f} {score:+5.0f}"
         for agent_id in agent_ids:
             agent_data = analyst_signals.get(agent_id, {})
             if isinstance(agent_data, dict) and ticker in agent_data:
@@ -195,10 +216,7 @@ def generate_text_summary(analyst_signals: dict, decisions: dict, date: str,
         lines.append(row)
 
     lines.append("  " + "─" * (len(hdr) - 2))
-    lines.append(f"  Total: {len(all_tickers)} tickers | "
-                 f"BUY: {sum(1 for d in dec_map.values() if d.get('action','').upper()=='BUY')} | "
-                 f"SELL: {sum(1 for d in dec_map.values() if d.get('action','').upper() in ('SELL','SHORT'))} | "
-                 f"HOLD: {sum(1 for d in dec_map.values() if d.get('action','').upper()=='HOLD')}")
+    lines.append(f"  Total: {len(all_tickers)} tickers")
     lines.append("")
     lines.append("")
 
@@ -208,20 +226,15 @@ def generate_text_summary(analyst_signals: dict, decisions: dict, date: str,
 
     for ticker in sorted_tickers:
         info = stock_info.get(ticker, {})
-        dec = dec_map.get(ticker, {})
-        action = dec.get("action", "HOLD").upper()
-        qty = dec.get("quantity", 0)
-        dec_confidence = dec.get("confidence", 0)
-        score = _overall_score(analyst_signals, ticker)
+        score = ticker_scores[ticker]
 
         lines.append(f"▶  {ticker}  —  {info.get('company', '')}")
         lines.append(f"  {info.get('sector', '')} / {info.get('industry_group', '')}  |  RS: {info.get('rs_rating', 0):.0f}  |  Score: {score:+.0f}")
-
-        qty_str = f" (qty: {qty})" if qty > 0 else ""
-        lines.append(f"  DECISION: {action}{qty_str}  |  Confidence: {dec_confidence}%")
         lines.append("  " + "─" * 60)
 
         for agent_id, agent_data in sorted(analyst_signals.items()):
+            if agent_id in EXCLUDE_FROM_DISPLAY:
+                continue
             if not isinstance(agent_data, dict) or ticker not in agent_data:
                 continue
             ticker_signal = agent_data[ticker]
@@ -233,7 +246,8 @@ def generate_text_summary(analyst_signals: dict, decisions: dict, date: str,
                     signal = "BEARISH"
                 conf = ticker_signal.get("confidence", 0)
                 reasoning = ticker_signal.get("reasoning", "")
-                short_reason = f"— {reasoning[:70]}" if isinstance(reasoning, str) and reasoning else ""
+                reason_text = _summarize_reasoning(reasoning)
+                short_reason = f"— {reason_text[:70]}" if reason_text else ""
                 agent_name = agent_id.replace("_agent", "").replace("_", " ").title()
                 lines.append(f"  {agent_name:25s} {signal:8s} ({conf:3.0f}%)  {short_reason}")
 
@@ -243,24 +257,20 @@ def generate_text_summary(analyst_signals: dict, decisions: dict, date: str,
     return "\n".join(lines)
 
 
-def generate_html_summary(analyst_signals: dict, decisions: dict, date: str,
-                          market: str, stock_info: dict, model: str = "Qwen 3.5:9B") -> str:
+def generate_html_summary(analyst_signals: dict, date: str,
+                          market: str, stock_info: dict) -> str:
     """Generate a Terminal Pro Dark themed HTML summary with matrix table."""
     all_tickers = set()
     for agent_signals in analyst_signals.values():
         if isinstance(agent_signals, dict):
             all_tickers.update(agent_signals.keys())
 
-    dec_map = {}
-    if decisions:
-        for dec in decisions if isinstance(decisions, list) else [decisions]:
-            if isinstance(dec, dict) and "ticker" in dec:
-                dec_map[dec["ticker"]] = dec
-
-    agent_ids = sorted(analyst_signals.keys())
+    agent_ids = sorted(a for a in analyst_signals.keys() if a not in EXCLUDE_FROM_DISPLAY)
     agent_shorts = [AGENT_SHORT.get(a, a.replace("_agent", "")[:6].title()) for a in agent_ids]
 
-    sorted_tickers = sorted(all_tickers, key=lambda t: _overall_score(analyst_signals, t), reverse=True)
+    # Pre-compute scores (used in sorting, matrix rows, and detail cards)
+    ticker_scores = {t: _overall_score(analyst_signals, t) for t in all_tickers}
+    sorted_tickers = sorted(all_tickers, key=lambda t: ticker_scores[t], reverse=True)
 
     # ── Summary Matrix Header ──
     agent_th = "".join(f'<th class="agent-col" title="{aid.replace("_agent","").replace("_"," ").title()}">{short}</th>' for aid, short in zip(agent_ids, agent_shorts))
@@ -269,12 +279,7 @@ def generate_html_summary(analyst_signals: dict, decisions: dict, date: str,
     summary_rows = ""
     for ticker in sorted_tickers:
         info = stock_info.get(ticker, {})
-        dec = dec_map.get(ticker, {})
-        action = dec.get("action", "HOLD").upper()
-        conf = dec.get("confidence", 0)
-        score = _overall_score(analyst_signals, ticker)
-
-        action_class = "buy" if action == "BUY" else "sell" if action in ("SELL", "SHORT") else "hold"
+        score = ticker_scores[ticker]
         score_class = "pos-score" if score > 0 else "neg-score" if score < 0 else ""
 
         agent_tds = ""
@@ -282,18 +287,20 @@ def generate_html_summary(analyst_signals: dict, decisions: dict, date: str,
             agent_data = analyst_signals.get(agent_id, {})
             if isinstance(agent_data, dict) and ticker in agent_data:
                 ts = agent_data[ticker]
-                sig = ts.get("signal", "neutral")
+                sig = ts.get("signal")
                 sig_conf = ts.get("confidence", 0)
-                sig_class = "bull" if sig in ("bullish", "positive") else "bear" if sig in ("bearish", "negative") else "neut"
-                if sig_conf == 0 and sig not in ("bullish", "positive", "bearish", "negative"):
+                if sig is None:
                     display = "."
                     sig_class = "nodata"
                 elif sig in ("bullish", "positive"):
                     display = f"+{sig_conf:.0f}"
+                    sig_class = "bull"
                 elif sig in ("bearish", "negative"):
                     display = f"-{sig_conf:.0f}"
+                    sig_class = "bear"
                 else:
                     display = f"~{sig_conf:.0f}"
+                    sig_class = "neut"
             else:
                 display = "."
                 sig_class = "nodata"
@@ -304,8 +311,6 @@ def generate_html_summary(analyst_signals: dict, decisions: dict, date: str,
 <td class="company-col">{info.get('company', '')}</td>
 <td class="ig-col">{info.get('industry_group', '')}</td>
 <td class="num">{info.get('rs_rating', 0):.0f}</td>
-<td class="decision-cell {action_class}">{action}</td>
-<td class="num">{conf}%</td>
 <td class="num {score_class}">{score:+.0f}</td>
 {agent_tds}
 </tr>
@@ -315,16 +320,12 @@ def generate_html_summary(analyst_signals: dict, decisions: dict, date: str,
     ticker_cards = ""
     for ticker in sorted_tickers:
         info = stock_info.get(ticker, {})
-        dec = dec_map.get(ticker, {})
-        action = dec.get("action", "HOLD").upper()
-        qty = dec.get("quantity", 0)
-        dec_confidence = dec.get("confidence", 0)
-        score = _overall_score(analyst_signals, ticker)
-        action_class = "buy" if action == "BUY" else "sell" if action in ("SELL", "SHORT") else "hold"
-        qty_str = f" (qty: {qty})" if qty > 0 else ""
+        score = ticker_scores[ticker]
 
         agent_rows = ""
         for agent_id, agent_data in sorted(analyst_signals.items()):
+            if agent_id in EXCLUDE_FROM_DISPLAY:
+                continue
             if not isinstance(agent_data, dict) or ticker not in agent_data:
                 continue
             ts = agent_data[ticker]
@@ -332,35 +333,27 @@ def generate_html_summary(analyst_signals: dict, decisions: dict, date: str,
                 signal = ts.get("signal", "neutral")
                 sig_conf = ts.get("confidence", 0)
                 reasoning = ts.get("reasoning", "")
-                short_reason = reasoning[:120] if isinstance(reasoning, str) and reasoning else ""
+                reason_text = _summarize_reasoning(reasoning)
                 signal_class = "bullish" if signal in ("bullish", "positive") else "bearish" if signal in ("bearish", "negative") else "neutral"
                 agent_name = agent_id.replace("_agent", "").replace("_", " ").title()
-                agent_rows += f'<tr><td class="agent-name">{agent_name}</td><td class="signal {signal_class}">{signal.upper()}</td><td class="num">{sig_conf:.0f}%</td><td class="reasoning">{short_reason}</td></tr>\n'
+                agent_rows += f'<tr><td class="agent-name">{agent_name}</td><td class="signal {signal_class}">{signal.upper()}</td><td class="num">{sig_conf:.0f}%</td><td class="reasoning">{reason_text}</td></tr>\n'
 
         ticker_cards += f"""
         <div class="ticker-card" id="{ticker}">
             <div class="ticker-header">
-                <div>
-                    <span class="ticker-symbol">{ticker}</span>
-                    <span class="company-name">{info.get('company', '')}</span>
-                </div>
-                <span class="decision {action_class}">{action}{qty_str}</span>
+                <span class="ticker-symbol">{ticker}</span>
+                <span class="company-name">{info.get('company', '')}</span>
             </div>
             <div class="ticker-meta">
                 <span>{info.get('sector', '')} / {info.get('industry_group', '')}</span>
                 <span>RS: {info.get('rs_rating', 0):.0f}  |  Score: {score:+.0f}</span>
             </div>
-            <div class="confidence">Confidence: {dec_confidence}%</div>
             <table class="signals-table">
                 <thead><tr><th>Agent</th><th>Signal</th><th>Conf</th><th>Reasoning</th></tr></thead>
                 <tbody>{agent_rows}</tbody>
             </table>
         </div>
         """
-
-    buy_count = sum(1 for d in dec_map.values() if d.get("action", "").upper() == "BUY")
-    sell_count = sum(1 for d in dec_map.values() if d.get("action", "").upper() in ("SELL", "SHORT"))
-    hold_count = len(all_tickers) - buy_count - sell_count
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -422,7 +415,7 @@ h2 {{ color: #39bae6; font-size: 1.1rem; margin: 1.5rem 0 0.8rem 0; }}
 .signal.bullish {{ color: #4ade80; }}
 .signal.bearish {{ color: #f87171; }}
 .signal.neutral {{ color: #facc15; }}
-.reasoning {{ color: #666; font-size: 0.72rem; max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.reasoning {{ color: #666; font-size: 0.72rem; white-space: normal; word-wrap: break-word; }}
 .watermark {{ text-align: right; color: rgba(255,255,255,0.18); font-size: 0.75rem; margin-top: 2rem; }}
 .back-top {{ text-align: right; margin: 0.5rem 0; }}
 .back-top a {{ color: #39bae6; font-size: 0.75rem; text-decoration: none; }}
@@ -430,19 +423,14 @@ h2 {{ color: #39bae6; font-size: 1.1rem; margin: 1.5rem 0 0.8rem 0; }}
 </head>
 <body>
 <h1>AI Hedge Fund — Selection Summary</h1>
-<div class="meta">{date} | Model: {model} | Market: {market.upper()} | RS 80-89 + Minervini + Large Cap</div>
-<div class="stats">
-    {len(all_tickers)} tickers |
-    <span class="buy-count">BUY: {buy_count}</span> |
-    <span class="sell-count">SELL: {sell_count}</span> |
-    <span class="hold-count">HOLD: {hold_count}</span>
-</div>
+<div class="meta">{date} | Market: {market.upper()} | RS 80-89 + Minervini + Large Cap</div>
+<div class="stats">{len(all_tickers)} tickers</div>
 
 <h2 id="top">Overview — All Analysts Matrix</h2>
 <div style="overflow-x:auto;">
 <table class="matrix-table">
 <thead>
-<tr><th>Ticker</th><th>Company</th><th>Industry Group</th><th>RS</th><th>Dec</th><th>Conf</th><th>Score</th>{agent_th}</tr>
+<tr><th>Ticker</th><th>Company</th><th>Industry Group</th><th>RS</th><th>Score</th>{agent_th}</tr>
 </thead>
 <tbody>
 {summary_rows}
@@ -462,17 +450,14 @@ def main():
     parser.add_argument("--date", type=str, default=datetime.now().strftime("%Y-%m-%d"))
     parser.add_argument("--market", type=str, default="us")
     parser.add_argument("--input", type=str, default=None, help="Path to pipeline output JSON")
-    parser.add_argument("--model", type=str, default="Qwen 3.5:9B")
     args = parser.parse_args()
 
     analyst_signals = {}
-    decisions = {}
 
     input_path = args.input or f"output/pipeline_{args.date}.json"
     if Path(input_path).exists():
         data = json.loads(Path(input_path).read_text())
         analyst_signals = data.get("analyst_signals", {})
-        decisions = data.get("decisions", {})
     else:
         print(f"Warning: No pipeline output at {input_path}", file=__import__("sys").stderr)
 
@@ -486,13 +471,13 @@ def main():
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
 
-    text = generate_text_summary(analyst_signals, decisions, args.date, args.market, stock_info, args.model)
+    text = generate_text_summary(analyst_signals, args.date, args.market, stock_info)
     text_path = output_dir / f"summary_{args.date}.txt"
     text_path.write_text(text)
     print(text)
     print(f"\nSaved to {text_path}")
 
-    html = generate_html_summary(analyst_signals, decisions, args.date, args.market, stock_info, args.model)
+    html = generate_html_summary(analyst_signals, args.date, args.market, stock_info)
     html_path = output_dir / f"summary_{args.date}.html"
     html_path.write_text(html)
     print(f"HTML saved to {html_path}")
