@@ -16,7 +16,7 @@ Multi-agent AI stock analysis pipeline running locally on Jetson with Qwen 2.5:7
 
 # Individual steps
 python scripts/screen_candidates.py --market us --min-rs 80 --max-rs 90 --minervini --large-cap
-poetry run python src/main.py --tickers AAPL,MSFT --analysts cathie_wood,technical_analyst,fundamentals_analyst,news_sentiment_analyst,peter_lynch,sentiment_analyst,growth_analyst,valuation_analyst --model qwen3.5:9b --ollama --show-reasoning
+poetry run python src/main.py --tickers AAPL,MSFT --analysts cathie_wood,technical_analyst,fundamentals_analyst,news_sentiment_analyst,peter_lynch,sentiment_analyst,growth_analyst,valuation_analyst --model qwen2.5:7b --ollama --show-reasoning
 poetry run python scripts/generate_summary.py --date 2026-03-15 --market us
 
 # Sync DB from Pi1
@@ -74,6 +74,9 @@ Jetson → SCP → Pi2:~/alpharvestpro-vip/docs/us/YYYY-MM/ai_hedge_fund_DATE.ht
 - Also serves .com (WordPress, JP/US) and .win (Ghost, TW/HK) — all on one Linode 4GB Tokyo
 
 ## Gotchas
+- **Active branch is `jetson-free-data` (NOT `main`)** — git pulls/pushes for generator changes should target this branch. Verify with `git branch` before pushing.
+- **Ticker symbol → Finviz (2026-04-21)**: `.ticker-symbol` in `scripts/generate_summary.py` is now an `<a href="https://finviz.com/quote.ashx?t=TICKER&p=d" target="_blank">`. TOC `<a href="#TICKER">` links stay UNCHANGED (they're for in-page navigation to each ticker's detail card). Don't "clean up" the split thinking they should be consistent — the two link types serve different UX roles.
+- **Pi→Jetson SSH is key-based** (2026-04-21): `ssh jetson` from Pi 1 or Pi 2 bypasses Tailscale browser prompts. Keys at each Pi's `~/.ssh/jetson_key`, pub in `~/.ssh/authorized_keys` here.
 - NEVER use "IBD" in user-facing text — use "Industry Group" / "業種グループ"
 - FMP API key is dead — all data comes from yfinance; `api.py` silently falls back
 - yfinance `get_financial_metrics()` returns 4-5 annual periods with computed growth; growth agent needs >= 4
@@ -84,4 +87,6 @@ Jetson → SCP → Pi2:~/alpharvestpro-vip/docs/us/YYYY-MM/ai_hedge_fund_DATE.ht
 - News sentiment: max_retries=1, defaults to neutral on parse failure (no stalling on bad LLM output)
 - Never show LLM model name in user-facing reports (removed from summary headers)
 - X stories output at `output/x_stories_YYYY-MM-DD.json`; pushed to Pi2 `data/x-stories/`
-- X stories cron: `30 8 * * 2-6` (after DB sync at 07:00, before first X post slot)
+- X stories cron: `30 10 * * 2-6` (after DB sync at 07:00, after ETF pipeline at 09:00)
+- Pipeline JSON `decisions` field is a dict keyed by ticker (not a list) — consumers must handle both formats
+- SSH to Pi2 uses key auth via Jetson `~/.ssh/config` — bypasses Tailscale browser re-auth
