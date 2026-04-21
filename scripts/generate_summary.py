@@ -341,7 +341,7 @@ def generate_html_summary(analyst_signals: dict, date: str,
         ticker_cards += f"""
         <div class="ticker-card" id="{ticker}">
             <div class="ticker-header">
-                <span class="ticker-symbol">{ticker}</span>
+                <a class="ticker-symbol" href="https://finviz.com/quote.ashx?t={ticker}&p=d" target="_blank" rel="noopener noreferrer" title="Open {ticker} daily chart on Finviz">{ticker}</a>
                 <span class="company-name">{info.get('company', '')}</span>
             </div>
             <div class="ticker-meta">
@@ -400,7 +400,8 @@ h2 {{ color: #39bae6; font-size: 1.1rem; margin: 1.5rem 0 0.8rem 0; }}
 /* Ticker Cards */
 .ticker-card {{ background: #12161c; border: 1px solid #1a1f2a; border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; }}
 .ticker-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }}
-.ticker-symbol {{ color: #39bae6; font-size: 1.2rem; font-weight: bold; margin-right: 0.8rem; }}
+.ticker-symbol {{ color: #39bae6; font-size: 1.2rem; font-weight: bold; margin-right: 0.8rem; text-decoration: none; cursor: pointer; }}
+.ticker-symbol:hover {{ color: #6eddff; text-decoration: underline; }}
 .company-name {{ color: #aaa; font-size: 0.9rem; }}
 .ticker-meta {{ color: #666; font-size: 0.8rem; margin-bottom: 0.3rem; display: flex; justify-content: space-between; }}
 .decision {{ padding: 0.2rem 0.8rem; border-radius: 4px; font-weight: bold; font-size: 0.85rem; }}
@@ -425,6 +426,9 @@ h2 {{ color: #39bae6; font-size: 1.1rem; margin: 1.5rem 0 0.8rem 0; }}
 <h1>AI Hedge Fund — Selection Summary</h1>
 <div class="meta">{date} | Market: {market.upper()} | RS 80-89 + Minervini + Large Cap</div>
 <div class="stats">{len(all_tickers)} tickers</div>
+<p style="max-width:900px;margin:10px 0 16px;padding:10px 14px;background:rgba(244,183,64,0.08);border-left:3px solid #e6b450;border-radius:4px;font-size:12.5px;line-height:1.6;color:#c9d1d9;">
+<strong style="color:#e6b450;">💡 Navigation</strong> — the Overview table links jump to each ticker's detail card below. <strong>Click any ticker symbol (blue) in a card header</strong> to open that stock's daily chart on <strong>Finviz</strong>.
+</p>
 
 <h2 id="top">Overview — All Analysts Matrix</h2>
 <div style="overflow-x:auto;">
