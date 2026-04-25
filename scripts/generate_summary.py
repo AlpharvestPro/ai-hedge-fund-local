@@ -10,10 +10,12 @@ Usage:
 """
 
 import argparse
+import html
 import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 DB_PATHS = {
     "us": [
@@ -338,14 +340,23 @@ def generate_html_summary(analyst_signals: dict, date: str,
                 agent_name = agent_id.replace("_agent", "").replace("_", " ").title()
                 agent_rows += f'<tr><td class="agent-name">{agent_name}</td><td class="signal {signal_class}">{signal.upper()}</td><td class="num">{sig_conf:.0f}%</td><td class="reasoning">{reason_text}</td></tr>\n'
 
+        # Codex review P2 fix: escape ticker / company / sector / group strings
+        # before injecting into HTML attributes. A malformed or quoted symbol
+        # used to produce attribute injection on a clickable element.
+        ticker_safe_attr = html.escape(ticker, quote=True)
+        ticker_safe_url = quote(ticker, safe="")
+        ticker_safe_text = html.escape(ticker)
+        company_safe = html.escape(info.get("company", ""))
+        sector_safe = html.escape(info.get("sector", ""))
+        group_safe = html.escape(info.get("industry_group", ""))
         ticker_cards += f"""
-        <div class="ticker-card" id="{ticker}">
+        <div class="ticker-card" id="{ticker_safe_attr}">
             <div class="ticker-header">
-                <a class="ticker-symbol" href="https://finviz.com/quote.ashx?t={ticker}&p=d" target="_blank" rel="noopener noreferrer" title="Open {ticker} daily chart on Finviz">{ticker}</a>
-                <span class="company-name">{info.get('company', '')}</span>
+                <a class="ticker-symbol" href="https://finviz.com/quote.ashx?t={ticker_safe_url}&p=d" target="_blank" rel="noopener noreferrer" title="Open {ticker_safe_attr} daily chart on Finviz">{ticker_safe_text}</a>
+                <span class="company-name">{company_safe}</span>
             </div>
             <div class="ticker-meta">
-                <span>{info.get('sector', '')} / {info.get('industry_group', '')}</span>
+                <span>{sector_safe} / {group_safe}</span>
                 <span>RS: {info.get('rs_rating', 0):.0f}  |  Score: {score:+.0f}</span>
             </div>
             <table class="signals-table">
