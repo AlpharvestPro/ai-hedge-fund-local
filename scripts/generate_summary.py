@@ -338,7 +338,9 @@ def generate_html_summary(analyst_signals: dict, date: str,
                 reason_text = _summarize_reasoning(reasoning)
                 signal_class = "bullish" if signal in ("bullish", "positive") else "bearish" if signal in ("bearish", "negative") else "neutral"
                 agent_name = agent_id.replace("_agent", "").replace("_", " ").title()
-                agent_rows += f'<tr><td class="agent-name">{agent_name}</td><td class="signal {signal_class}">{signal.upper()}</td><td class="num">{sig_conf:.0f}%</td><td class="reasoning">{reason_text}</td></tr>\n'
+                signal_upper = signal.upper()
+                signal_ja = {'BULLISH': '強気', 'BEARISH': '弱気', 'POSITIVE': '強気', 'NEGATIVE': '弱気', 'NEUTRAL': '中立'}.get(signal_upper, signal_upper)
+                agent_rows += f'<tr><td class="agent-name">{agent_name}</td><td class="signal {signal_class}"><span class="lang-en">{signal_upper}</span><span class="lang-ja">{signal_ja}</span></td><td class="num">{sig_conf:.0f}%</td><td class="reasoning">{reason_text}</td></tr>\n'
 
         # Codex review P2 fix: escape ticker / company / sector / group strings
         # before injecting into HTML attributes. A malformed or quoted symbol
@@ -360,7 +362,7 @@ def generate_html_summary(analyst_signals: dict, date: str,
                 <span>RS: {info.get('rs_rating', 0):.0f}  |  Score: {score:+.0f}</span>
             </div>
             <table class="signals-table">
-                <thead><tr><th>Agent</th><th>Signal</th><th>Conf</th><th>Reasoning</th></tr></thead>
+                <thead><tr><th><span class="lang-en">Agent</span><span class="lang-ja">アナリスト</span></th><th><span class="lang-en">Signal</span><span class="lang-ja">シグナル</span></th><th><span class="lang-en">Conf</span><span class="lang-ja">信頼度</span></th><th><span class="lang-en">Reasoning</span><span class="lang-ja">根拠</span></th></tr></thead>
                 <tbody>{agent_rows}</tbody>
             </table>
         </div>
@@ -431,21 +433,36 @@ h2 {{ color: #39bae6; font-size: 1.1rem; margin: 1.5rem 0 0.8rem 0; }}
 .watermark {{ text-align: right; color: rgba(255,255,255,0.18); font-size: 0.75rem; margin-top: 2rem; }}
 .back-top {{ text-align: right; margin: 0.5rem 0; }}
 .back-top a {{ color: #39bae6; font-size: 0.75rem; text-decoration: none; }}
+.lang-en, .lang-ja {{ display: none; }}
+body.lang-en .lang-en, body.lang-ja .lang-ja {{ display: inline; }}
+.lang-toggle {{ position: fixed; top: 12px; right: 12px;
+  background: #12161c; border: 1px solid #1a1f2a; border-radius: 6px;
+  overflow: hidden; z-index: 100; font-family: inherit; font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4); }}
+.lang-toggle button {{ background: transparent; color: #888; border: none;
+  padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; }}
+.lang-toggle button.active {{ background: #e6b450; color: #0a0e14; font-weight: 600; }}
+.lang-toggle button:hover:not(.active) {{ background: #1a1f2a; color: #e0e0e0; }}
+
 </style>
 </head>
-<body>
-<h1>AI Hedge Fund — Selection Summary</h1>
+<body class="lang-en">
+<div class="lang-toggle" role="group" aria-label="Language">
+  <button data-lang="en" type="button">EN</button>
+  <button data-lang="ja" type="button">JA</button>
+</div>
+<h1><span class="lang-en">AI Hedge Fund — Selection Summary</span><span class="lang-ja">AIヘッジファンド — 選定サマリー</span></h1>
 <div class="meta">{date} | Market: {market.upper()} | RS 80-89 + Minervini + Large Cap</div>
 <div class="stats">{len(all_tickers)} tickers</div>
 <p style="max-width:900px;margin:10px 0 16px;padding:10px 14px;background:rgba(244,183,64,0.08);border-left:3px solid #e6b450;border-radius:4px;font-size:12.5px;line-height:1.6;color:#c9d1d9;">
-<strong style="color:#e6b450;">💡 Navigation</strong> — the Overview table links jump to each ticker's detail card below. <strong>Click any ticker symbol (blue) in a card header</strong> to open that stock's daily chart on <strong>Finviz</strong>.
+<strong style="color:#e6b450;">💡 <span class="lang-en">Navigation</span><span class="lang-ja">ナビゲーション</span></strong> <span class="lang-en">— the Overview table links jump to each ticker's detail card below. <strong>Click any ticker symbol (blue) in a card header</strong> to open that stock's daily chart on <strong>Finviz</strong>.</span><span class="lang-ja">— 概要テーブルのリンクから各銘柄の詳細カードに移動します。<strong>カード見出しのコード(青)をクリック</strong>すると Finviz の日足チャートが開きます。</span>
 </p>
 
-<h2 id="top">Overview — All Analysts Matrix</h2>
+<h2 id="top"><span class="lang-en">Overview — All Analysts Matrix</span><span class="lang-ja">概要 — 全アナリスト マトリクス</span></h2>
 <div style="overflow-x:auto;">
 <table class="matrix-table">
 <thead>
-<tr><th>Ticker</th><th>Company</th><th>Industry Group</th><th>RS</th><th>Score</th>{agent_th}</tr>
+<tr><th><span class="lang-en">Ticker</span><span class="lang-ja">コード</span></th><th><span class="lang-en">Company</span><span class="lang-ja">会社</span></th><th><span class="lang-en">Industry Group</span><span class="lang-ja">業種グループ</span></th><th>RS</th><th><span class="lang-en">Score</span><span class="lang-ja">スコア</span></th>{agent_th}</tr>
 </thead>
 <tbody>
 {summary_rows}
@@ -453,9 +470,31 @@ h2 {{ color: #39bae6; font-size: 1.1rem; margin: 1.5rem 0 0.8rem 0; }}
 </table>
 </div>
 
-<h2>Detail</h2>
+<h2><span class="lang-en">Detail</span><span class="lang-ja">詳細</span></h2>
 {ticker_cards}
 <div class="watermark">AlpharvestPro</div>
+<script>
+(function () {{
+  const KEY = 'apv_aihf_lang';
+  const DEFAULT_LANG = 'en';
+  function apply(l) {{
+    document.body.className = 'lang-' + l;
+    document.querySelectorAll('.lang-toggle button').forEach(b => {{
+      b.classList.toggle('active', b.dataset.lang === l);
+    }});
+    try {{ localStorage.setItem(KEY, l); }} catch (e) {{}}
+  }}
+  let saved;
+  try {{ saved = localStorage.getItem(KEY); }} catch (e) {{}}
+  const initial = saved || DEFAULT_LANG;
+  document.addEventListener('DOMContentLoaded', () => {{
+    document.querySelectorAll('.lang-toggle button').forEach(b => {{
+      b.addEventListener('click', () => apply(b.dataset.lang));
+    }});
+    apply(initial);
+  }});
+}})();
+</script>
 </body>
 </html>"""
 
