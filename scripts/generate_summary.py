@@ -433,8 +433,8 @@ h2 {{ color: #39bae6; font-size: 1.1rem; margin: 1.5rem 0 0.8rem 0; }}
 .watermark {{ text-align: right; color: rgba(255,255,255,0.18); font-size: 0.75rem; margin-top: 2rem; }}
 .back-top {{ text-align: right; margin: 0.5rem 0; }}
 .back-top a {{ color: #39bae6; font-size: 0.75rem; text-decoration: none; }}
-.lang-en, .lang-ja {{ display: none; }}
-body.lang-en .lang-en, body.lang-ja .lang-ja {{ display: inline; }}
+/* Default: show both langs unless body has valid lang-XX class. Defensive. */
+body.lang-en .lang-ja, body.lang-ja .lang-en {{ display: none; }}
 .lang-toggle {{ position: fixed; top: 12px; right: 12px;
   background: #12161c; border: 1px solid #1a1f2a; border-radius: 6px;
   overflow: hidden; z-index: 100; font-family: inherit; font-size: 12px;
@@ -484,9 +484,10 @@ body.lang-en .lang-en, body.lang-ja .lang-ja {{ display: inline; }}
     }});
     try {{ localStorage.setItem(KEY, l); }} catch (e) {{}}
   }}
+  const VALID = {{en: 1, ja: 1}};
   let saved;
   try {{ saved = localStorage.getItem(KEY); }} catch (e) {{}}
-  const initial = saved || DEFAULT_LANG;
+  const initial = (saved && VALID[saved]) ? saved : DEFAULT_LANG;
   document.addEventListener('DOMContentLoaded', () => {{
     document.querySelectorAll('.lang-toggle button').forEach(b => {{
       b.addEventListener('click', () => apply(b.dataset.lang));
