@@ -30,6 +30,12 @@ fi
 
 echo "[$DATE] Starting AI hedge fund analysis for $MARKET (market date: $MDATE)"
 
+# Pre-flight: llama.cpp server must be reachable before doing any work
+if ! curl -sf http://127.0.0.1:8080/health >/dev/null; then
+    echo "[$DATE] ERROR: llama.cpp server not reachable on :8080. Check: systemctl --user status llamacpp"
+    exit 2
+fi
+
 # 1. Screen RS 80-89 + Minervini + large-cap (S&P 500 class), dedup dual-class shares
 python scripts/screen_candidates.py --market "$MARKET" --min-rs 80 --max-rs 90 --minervini --large-cap -o candidates.json
 
@@ -47,8 +53,8 @@ ANALYSTS="technical_analyst,fundamentals_analyst,news_sentiment_analyst,peter_ly
 poetry run python src/main.py \
     --tickers "$TICKERS" \
     --analysts "$ANALYSTS" \
-    --model qwen2.5:7b \
-    --ollama \
+    --model "Gemma-4-E4B-Abliterated.Q8_0.gguf" \
+    --llamacpp \
     --end-date "$MDATE" \
     --show-reasoning
 
@@ -68,6 +74,11 @@ if [ -f "$REPORT" ]; then
         git pull --rebase origin main && \
         git push origin main" 2>&1 || echo "[$DATE] WARNING: git push failed, report saved locally"
     echo "[$DATE] Report deployed: docs/us/$MMONTH/ai_hedge_fund_${MDATE}.html"
+    # Direct rsync Jetson→Linode for daily .vip coverage (independent of Pi 1
+    # rsync chain which only runs M-F → Sat-generated files were stuck till Mon).
+    rsync -avz --timeout=60 "$REPORT" "linode:/var/www/vip/reports/us/$MMONTH/ai_hedge_fund_${MDATE}.html" 2>&1 \
+        && echo "[$DATE] AI-HF rsynced direct to Linode" \
+        || echo "[$DATE] WARNING: Linode rsync failed (Pi 1 will retry next cron)"
 fi
 
 echo "[$DATE] AI hedge fund analysis complete for $MARKET (market date: $MDATE) — $(echo $TICKERS | tr ',' '\n' | wc -l) tickers"
