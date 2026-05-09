@@ -362,7 +362,7 @@ def generate_html_summary(analyst_signals: dict, date: str,
                 <span>RS: {info.get('rs_rating', 0):.0f}  |  Score: {score:+.0f}</span>
             </div>
             <table class="signals-table">
-                <thead><tr><th><span class="lang-en">Agent</span><span class="lang-ja">アナリスト</span></th><th><span class="lang-en">Signal</span><span class="lang-ja">シグナル</span></th><th><span class="lang-en">Conf</span><span class="lang-ja">信頼度</span></th><th><span class="lang-en">Reasoning</span><span class="lang-ja">根拠</span></th></tr></thead>
+                <thead><tr><th><span class="lang-en">Agent</span><span class="lang-ja">アナリスト</span></th><th><span class="lang-en">Sentiment</span><span class="lang-ja">センチメント</span></th><th><span class="lang-en">Conf</span><span class="lang-ja">信頼度</span></th><th><span class="lang-en">Reasoning</span><span class="lang-ja">根拠</span></th></tr></thead>
                 <tbody>{agent_rows}</tbody>
             </table>
         </div>
@@ -373,7 +373,7 @@ def generate_html_summary(analyst_signals: dict, date: str,
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Hedge Fund — {date}</title>
+<title>AI Agentic Simulator — {date}</title>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 body {{ background: #0a0e14; color: #e0e0e0; font-family: 'JetBrains Mono', 'Fira Code', monospace; padding: 1.5rem; max-width: 1600px; margin: 0 auto; }}
@@ -451,7 +451,7 @@ body.lang-en .lang-ja, body.lang-ja .lang-en {{ display: none; }}
   <button data-lang="en" type="button">EN</button>
   <button data-lang="ja" type="button">JA</button>
 </div>
-<h1><span class="lang-en">AI Hedge Fund — Selection Summary</span><span class="lang-ja">AIヘッジファンド — 選定サマリー</span></h1>
+<h1><span class="lang-en">AI Agentic Simulator — Selection Summary</span><span class="lang-ja">AI エージェント・シミュレーター — 選定サマリー</span></h1>
 <div class="meta">{date} | Market: {market.upper()} | RS 80-89 + Minervini + Large Cap</div>
 <div class="stats">{len(all_tickers)} tickers</div>
 <p style="max-width:900px;margin:10px 0 16px;padding:10px 14px;background:rgba(244,183,64,0.08);border-left:3px solid #e6b450;border-radius:4px;font-size:12.5px;line-height:1.6;color:#c9d1d9;">

@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import sqlite3
 import time
@@ -39,8 +40,8 @@ SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 DB_PATH = Path.home() / "data" / "us_rs.db"
 CANDIDATES_PATH = PROJECT_ROOT / "candidates.json"
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen3.5:9b"
+LLAMACPP_BASE_URL = os.environ.get("LLAMACPP_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
+LLAMACPP_MODEL = os.environ.get("LLAMACPP_MODEL", "Gemma-4-E4B-Abliterated.Q8_0.gguf")
 MAX_STORIES = 4
 
 # Ticker extraction: $TICKER or (TICKER) patterns
@@ -352,10 +353,9 @@ def cross_reference(
 
     candidates_set = set(candidates)
 
-    # Build pipeline decisions lookup
-    decisions = {}
-    for d in pipeline.get("decisions", []):
-        decisions[d["ticker"]] = d
+    # Build pipeline decisions lookup (dict keyed by ticker, or legacy list)
+    raw = pipeline.get("decisions", {})
+    decisions = raw if isinstance(raw, dict) else {d["ticker"]: d for d in raw}
 
     # Build set of all known tickers (candidates + DB) for word-boundary matching
     all_known = candidates_set | set(db_data.get("daily_analysis", {}).keys())
@@ -602,7 +602,7 @@ FALLBACK_TEMPLATE = (
     "{vcp_text}"
     "。AI分析は{decision}判定（確信度{confidence}%）。"
     "あなたはどう見ますか？"
-    " #{ticker} #クロスシグナル"
+    " #{ticker} #クロスパターン"
 )
 
 
@@ -635,7 +635,7 @@ def generate_story_qwen(story: dict) -> str:
         entry_signal_line=entry_line,
     )
 
-    text = _call_ollama(prompt)
+    text = _call_llm(prompt)
     if not text:
         # Fallback template
         vcp_text = f"、VCP{vcp['contractions']}回収縮" if vcp else ""
@@ -665,7 +665,7 @@ def generate_theme_story_qwen(theme: dict) -> str:
         avg_rs=theme.get("avg_rs", 0),
     )
 
-    text = _call_ollama(prompt)
+    text = _call_llm(prompt)
     if not text:
         text = (
             f"📊 {theme.get('theme', 'セクター')}に注目！"
@@ -676,16 +676,23 @@ def generate_theme_story_qwen(theme: dict) -> str:
     return text
 
 
-def _call_ollama(prompt: str, timeout: int = 120) -> str:
-    """Call Ollama API and return generated text. Returns empty string on failure."""
+def _call_llm(prompt: str, timeout: int = 120) -> str:
+    """Call llama.cpp /v1/chat/completions and return generated text. Empty on failure."""
     try:
         resp = requests.post(
-            OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            f"{LLAMACPP_BASE_URL}/v1/chat/completions",
+            json={
+                "model": LLAMACPP_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "max_tokens": 400,
+                "temperature": 0.7,
+            },
             timeout=timeout,
         )
         if resp.status_code == 200:
-            text = resp.json().get("response", "").strip()
+            data = resp.json()
+            text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
             # Clean up: remove thinking tags if present
             text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
             # Truncate to 280 chars (X limit)
@@ -698,7 +705,7 @@ def _call_ollama(prompt: str, timeout: int = 120) -> str:
                     text = text[:277] + "..."
             return text
     except requests.RequestException as e:
-        print(f"  WARNING: Ollama call failed: {e}")
+        print(f"  WARNING: llama.cpp call failed: {e}")
     return ""
 
 
@@ -784,7 +791,7 @@ def main():
         print("  [DRY RUN] Skipping Qwen generation")
         for s in ticker_stories:
             s["generated_post"] = f"[DRY RUN] Story for ${s['ticker']}"
-            s["hashtags"] = [f"#{s['ticker']}", "#クロスシグナル"]
+            s["hashtags"] = [f"#{s['ticker']}", "#クロスパターン"]
         for t in theme_stories:
             t["generated_post"] = f"[DRY RUN] Theme: {t['theme']}"
             t["hashtags"] = ["#テーマ", "#モメンタム"]
