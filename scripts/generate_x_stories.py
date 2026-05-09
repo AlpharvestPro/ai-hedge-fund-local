@@ -195,7 +195,7 @@ def get_db_data(db_path: Path, tickers: list[str], days: int = 7) -> dict:
 
 
 def parse_influencer_signals(signals_dir: Path) -> list[dict]:
-    """Parse influencer signal markdown files."""
+    """Parse influencer pattern markdown files."""
     signals = []
     for md_file in sorted(signals_dir.glob("*.md")):
         if "xtrends" in md_file.name or "x-trends" in md_file.name:
@@ -546,9 +546,9 @@ def _find_theme_matches(
 
 STORY_PROMPT_TEMPLATE = """\
 あなたはAlpharvestProの金融アナリストです。
-以下のクロスシグナルデータから、X（Twitter）投稿用の日本語ストーリーを1つ作成してください。
+以下のクロスパターンデータから、X（Twitter）投稿用の日本語ストーリーを1つ作成してください。
 
-【インフルエンサーシグナル】
+【インフルエンサーパターン】
 ソース: {source_name}
 内容: {source_ja}
 
@@ -617,7 +617,7 @@ def generate_story_qwen(story: dict) -> str:
     entry_line = ""
     if entry_sigs:
         sig_strs = [f"{s['type']}(強度{s['strength']})" for s in entry_sigs[:2]]
-        entry_line = f"エントリーシグナル: {', '.join(sig_strs)}"
+        entry_line = f"エントリーパターン: {', '.join(sig_strs)}"
 
     prompt = STORY_PROMPT_TEMPLATE.format(
         source_name=story.get("source_name", ""),
@@ -715,7 +715,7 @@ def _call_llm(prompt: str, timeout: int = 120) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate X stories from cross-signal data")
+    parser = argparse.ArgumentParser(description="Generate X stories from cross-pattern data")
     parser.add_argument("--signals-dir", required=True, help="Directory with influencer/trend markdown files")
     parser.add_argument("--pipeline-json", help="Path to pipeline JSON (optional)")
     parser.add_argument("--output", required=True, help="Output JSON path")
@@ -779,7 +779,7 @@ def main():
     print(f"  Tier 3 themes: {len(theme_stories)}")
 
     if not ticker_stories and not theme_stories:
-        print("  No cross-signal matches — exiting")
+        print("  No cross-pattern matches — exiting")
         _write_empty_output(args.output, today, t0)
         return
 
