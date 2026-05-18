@@ -74,11 +74,15 @@ if [ -f "$REPORT" ]; then
         git pull --rebase origin main && \
         git push origin main" 2>&1 || echo "[$DATE] WARNING: git push failed, report saved locally"
     echo "[$DATE] Report deployed: docs/us/$MMONTH/ai_hedge_fund_${MDATE}.html"
-    # Direct rsync Jetson→Linode for daily .vip coverage (independent of Pi 1
-    # rsync chain which only runs M-F → Sat-generated files were stuck till Mon).
+    # Direct rsync Jetson→Linode — DISABLED 2026-05-18 by the reports-only
+    # Linode cutoff. Report still saved locally + pushed to Pi2/GitHub above.
+    if [ "${APV_SKIP_LINODE_REPORTS:-1}" != "1" ]; then
     rsync -avz --timeout=60 "$REPORT" "linode:/var/www/vip/reports/us/$MMONTH/ai_hedge_fund_${MDATE}.html" 2>&1 \
         && echo "[$DATE] AI-HF rsynced direct to Linode" \
         || echo "[$DATE] WARNING: Linode rsync failed (Pi 1 will retry next cron)"
+    else
+        echo "[$DATE] [CUTOFF] AI-HF Linode rsync skipped (APV_SKIP_LINODE_REPORTS=1)"
+    fi
 fi
 
 echo "[$DATE] AI hedge fund analysis complete for $MARKET (market date: $MDATE) — $(echo $TICKERS | tr ',' '\n' | wc -l) tickers"
