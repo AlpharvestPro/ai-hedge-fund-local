@@ -566,7 +566,8 @@ RS: {rs} | Minervini: {minervini}/10
 ルール:
 - 240文字以内（ハッシュタグ含む）
 - 具体的な数値を含める
-- 最後に質問を付ける
+- フォロー・いいね・返信・リポスト・ブックマーク・通知ONを求めない
+- 読者への質問や反応と引き換えの情報提供は書かず、事実に基づく分析で完結させる
 - ハッシュタグ2-3個
 - "IBD"という文字列は絶対に使わない。代わりに"Investor's Business Daily"を使用
 - 絵文字1-2個のみ
@@ -590,7 +591,8 @@ THEME_PROMPT_TEMPLATE = """\
 - 240文字以内（ハッシュタグ含む）
 - セクター全体のモメンタムに焦点
 - 具体的な銘柄名と数値を含める
-- 最後に質問を付ける
+- フォロー・いいね・返信・リポスト・ブックマーク・通知ONを求めない
+- 読者への質問や反応と引き換えの情報提供は書かず、事実に基づく分析で完結させる
 - ハッシュタグ2-3個
 - 絵文字1-2個のみ
 - /nothink
@@ -601,7 +603,6 @@ FALLBACK_TEMPLATE = (
     "RS {rs}、Minervini {minervini}/10"
     "{vcp_text}"
     "。AI分析は{decision}判定（確信度{confidence}%）。"
-    "あなたはどう見ますか？"
     " #{ticker} #クロスパターン"
 )
 
@@ -670,7 +671,6 @@ def generate_theme_story_qwen(theme: dict) -> str:
         text = (
             f"📊 {theme.get('theme', 'セクター')}に注目！"
             f"候補銘柄{candidate_list}の平均RS {theme.get('avg_rs', 0)}。"
-            f"セクター全体のモメンタムは続くか？"
             f" #モメンタム #セクターローテーション"
         )
     return text
