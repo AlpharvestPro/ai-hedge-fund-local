@@ -275,7 +275,7 @@ def generate_html_summary(analyst_signals: dict, date: str,
     sorted_tickers = sorted(all_tickers, key=lambda t: ticker_scores[t], reverse=True)
 
     # ── Summary Matrix Header ──
-    agent_th = "".join(f'<th class="agent-col" title="{aid.replace("_agent","").replace("_"," ").title()}">{short}</th>' for aid, short in zip(agent_ids, agent_shorts))
+    agent_th = "".join(f'<th class="agent-col" title="{html.escape(aid.replace("_agent","").replace("_"," ").title(), quote=True)}">{html.escape(short)}</th>' for aid, short in zip(agent_ids, agent_shorts))
 
     # ── Summary Matrix Rows ──
     summary_rows = ""
@@ -309,9 +309,9 @@ def generate_html_summary(analyst_signals: dict, date: str,
             agent_tds += f'<td class="sig {sig_class}">{display}</td>'
 
         summary_rows += f"""<tr>
-<td class="ticker-link" onclick="document.getElementById('{ticker}').scrollIntoView({{behavior:'smooth'}})"><a href="#{ticker}">{ticker}</a></td>
-<td class="company-col">{info.get('company', '')}</td>
-<td class="ig-col">{info.get('industry_group', '')}</td>
+<td class="ticker-link" data-ticker="{html.escape(ticker, quote=True)}" onclick="document.getElementById(this.dataset.ticker).scrollIntoView({{behavior:'smooth'}})"><a href="#{quote(ticker, safe='')}">{html.escape(ticker)}</a></td>
+<td class="company-col">{html.escape(info.get('company', ''))}</td>
+<td class="ig-col">{html.escape(info.get('industry_group', ''))}</td>
 <td class="num">{info.get('rs_rating', 0):.0f}</td>
 <td class="num {score_class}">{score:+.0f}</td>
 {agent_tds}
@@ -335,12 +335,12 @@ def generate_html_summary(analyst_signals: dict, date: str,
                 signal = ts.get("signal", "neutral")
                 sig_conf = ts.get("confidence", 0)
                 reasoning = ts.get("reasoning", "")
-                reason_text = _summarize_reasoning(reasoning)
+                reason_text = html.escape(_summarize_reasoning(reasoning))
                 signal_class = "bullish" if signal in ("bullish", "positive") else "bearish" if signal in ("bearish", "negative") else "neutral"
-                agent_name = agent_id.replace("_agent", "").replace("_", " ").title()
+                agent_name = html.escape(agent_id.replace("_agent", "").replace("_", " ").title())
                 signal_upper = signal.upper()
                 signal_ja = {'BULLISH': '強気', 'BEARISH': '弱気', 'POSITIVE': '強気', 'NEGATIVE': '弱気', 'NEUTRAL': '中立'}.get(signal_upper, signal_upper)
-                agent_rows += f'<tr><td class="agent-name">{agent_name}</td><td class="signal {signal_class}"><span class="lang-en">{signal_upper}</span><span class="lang-ja">{signal_ja}</span></td><td class="num">{sig_conf:.0f}%</td><td class="reasoning">{reason_text}</td></tr>\n'
+                agent_rows += f'<tr><td class="agent-name">{agent_name}</td><td class="signal {signal_class}"><span class="lang-en">{html.escape(signal_upper)}</span><span class="lang-ja">{html.escape(signal_ja)}</span></td><td class="num">{sig_conf:.0f}%</td><td class="reasoning">{reason_text}</td></tr>\n'
 
         # Codex review P2 fix: escape ticker / company / sector / group strings
         # before injecting into HTML attributes. A malformed or quoted symbol
