@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from app.backend.security import LocalAccessMiddleware
 import logging
 import asyncio
 
@@ -25,6 +27,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# This demo stores local API keys and has no multi-user authentication.
+# Reject accidental network binding, cross-origin requests and DNS rebinding.
+app.add_middleware(LocalAccessMiddleware)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1'])
 
 # Include all routes
 app.include_router(api_router)
