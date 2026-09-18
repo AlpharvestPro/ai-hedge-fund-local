@@ -229,3 +229,12 @@ If ports 8000 or 5173 are in use:
 ### Getting Help
 - Check the [GitHub Issues](https://github.com/virattt/ai-hedge-fund/issues)
 - Follow updates on [Twitter](https://x.com/virattt) 
+
+
+### Local API security
+
+The demo backend is a single-user local tool and includes API-key management.
+Run it on 127.0.0.1 as configured in `run.sh`; do not publish it behind a public
+proxy. Local peer, Host and Origin checks reject network access and DNS
+rebinding. Use an SSH tunnel for private remote access. Multi-user hosting
+requires a separate authenticated design before these controls are relaxed.
